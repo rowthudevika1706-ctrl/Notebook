@@ -1,5 +1,6 @@
 require("dotenv").config();
 
+const bcrypt = require("bcrypt");
 const config=require("./config.json")
 const mongoose=require("mongoose")
 
@@ -60,10 +61,12 @@ app.post("/create-account",async(req,res)=>{
         })
     }
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const user=new User({
         fullName,
         email,
-        password,
+        password:hashedPassword,
     })
 
     await user.save();
@@ -84,8 +87,9 @@ app.post("/create-account",async(req,res)=>{
 
 
 //login
-app.post("/login",async(req,res)=>{
-    const {email,password}=req.body;
+//login
+app.post("/login", async(req, res) => {
+    const { email, password } = req.body;
 
     if(!email)
     {
@@ -101,7 +105,7 @@ app.post("/login",async(req,res)=>{
         })
     }
 
-    const userInfo=await User.findOne({email:email});
+    const userInfo = await User.findOne({ email: email });
 
     if(!userInfo)
     {
@@ -110,27 +114,33 @@ app.post("/login",async(req,res)=>{
         })
     }
 
-    if(userInfo.email==email && userInfo.password==password)
-    {
-        const user={user:userInfo};
-        const accessToken=jwt.sign(user,process.env.ACCESS_TOKEN_SECRET,{
-            expiresIn:"36000m",
-        })
+    // Compare entered password with hashed password
+    const isMatch = await bcrypt.compare(password, userInfo.password);
 
-        return res.json({
-            error:false,
-            message:"Login Successful",
-            email,
-            accessToken
-        })
-    }
-    else
+    if(!isMatch)
     {
         return res.status(400).json({
             error:true,
             message:"Invalid Credentials"
         })
     }
+
+    const user = { user: userInfo };
+
+    const accessToken = jwt.sign(
+        user,
+        process.env.ACCESS_TOKEN_SECRET,
+        {
+            expiresIn:"36000m",
+        }
+    );
+
+    return res.json({
+        error:false,
+        message:"Login Successful",
+        email,
+        accessToken
+    });
 })
 
 //Get User
@@ -330,40 +340,62 @@ app.put("/update-note-pinned/:noteId",authenticateToken,async(req,res)=>{
 
 
 //Search Notes
-app.get("/search-notes/",authenticateToken,async(req,res)=>{
-    const {user}=req.user;
-    const {query}=req.query;
+app.get("/search-notes/", authenticateToken, async (req, res) => {
 
-    if(!query)
-    {
-        return res.status(400).json({error:true,message:"Search query is required"})
+    const { user } = req.user;
+    const { query } = req.query;
+
+    if (!query || query.trim() === "") {
+        return res.status(400).json({
+            error: true,
+            message: "Search query is required"
+        });
     }
-    
-    try{
-        const matchingNotes=await Note.find({
-            userId:user._id,
-            $or: [{title:{$regex: new RegExp(query,"i")}},
-            {content:{$regex:new RegExp(query,"i")}},],
-        })
+
+    try {
+
+        const searchQuery = query.trim();
+
+        const matchingNotes = await Note.find({
+            userId: user._id,
+            $or: [
+                {
+                    title: {
+                        $regex: searchQuery,
+                        $options: "i"
+                    }
+                },
+                {
+                    content: {
+                        $regex: searchQuery,
+                        $options: "i"
+                    }
+                },
+                {
+                    tags: {
+                        $regex: searchQuery,
+                        $options: "i"
+                    }
+                }
+            ]
+        });
 
         return res.json({
-            error:false,
-            notes:matchingNotes,
-            message:"Notes matching the search query retrieved successfully"
-        })
+            error: false,
+            notes: matchingNotes,
+            message: "Notes matching the search query retrieved successfully"
+        });
 
-    }catch(error)
-    {
+    } catch (error) {
+
+        console.log(error);
+
         return res.status(500).json({
-            error:true,
-            message:"Internal Server Error",
-        })
+            error: true,
+            message: "Internal Server Error"
+        });
     }
-
-})
-
-
-
+});
 
 
 app.listen(8000);

@@ -6,7 +6,7 @@ export default {
     extend: {
       //Colors used in the project
       colors:{
-        primary:"#2B85FF",
+        primary:"#6B60F6",
         secondary:"#EF863E"
       }
     },
